@@ -118,13 +118,13 @@ export async function POST(request) {
       ? `בהקשר לשאלה הקודמת "${lastUserTurn.text}": ${preparedQuestion}`
       : preparedQuestion;
 
-    const prompt = buildPrompt({
+    const promptPayload = buildPrompt({
       question: rewritten,
       recentTurns,
       lastGroundedQuestion: lastRefs?.question,
       isFirstTurn
     });
-    const geminiResponse = await generateAnswer(prompt);
+    const geminiResponse = await generateAnswer(promptPayload);
     const parsed = parseGeminiResponse(geminiResponse);
     finalAnswer = parsed.answer;
     citations = parsed.references.map((ref) => `${ref.week} — ${ref.part}`);
