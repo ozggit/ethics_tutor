@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { getAuthUrl } from "../../../../lib/driveSync";
-import { setSetting } from "../../../../lib/db";
+import { getAuthUrl } from "../../../../../lib/driveSync";
+import { setSetting } from "../../../../../lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

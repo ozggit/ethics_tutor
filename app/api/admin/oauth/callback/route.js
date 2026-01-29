@@ -1,5 +1,5 @@
-import { exchangeCodeForTokens } from "../../../../lib/driveSync";
-import { getSetting, setSetting } from "../../../../lib/db";
+import { exchangeCodeForTokens } from "../../../../../lib/driveSync";
+import { getSetting, setSetting } from "../../../../../lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
