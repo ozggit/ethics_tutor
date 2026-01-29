@@ -221,6 +221,9 @@ export default function AdminClient() {
         <div className="footer-note">
           הדבק/י כאן Store חדש כדי להתחיל מאפס ולסנכרן מחדש.
         </div>
+        <div className="footer-note">
+          שינוי ה-Store מנקה את מטמון הסנכרון ויגרום להעלאה מחדש של כל הקבצים.
+        </div>
         <div className="actions">
           <input
             className="model-input"

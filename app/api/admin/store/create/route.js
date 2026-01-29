@@ -1,4 +1,4 @@
-import { setSetting } from "../../../../../lib/db";
+import { resetDriveFileCache, setSetting } from "../../../../../lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +30,7 @@ export async function POST(request) {
   const storeName = data?.name || "";
   if (storeName) {
     setSetting("file_search_store_name", storeName);
+    resetDriveFileCache();
   }
 
   return Response.json({ store: storeName, displayName });

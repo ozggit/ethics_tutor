@@ -1,4 +1,4 @@
-import { setSetting, getSetting } from "../../../../lib/db";
+import { getSetting, resetDriveFileCache, setSetting } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +17,10 @@ export async function POST(request) {
   if (store.length > 120) {
     return Response.json({ error: "Store name is too long" }, { status: 400 });
   }
+  const previous = getSetting("file_search_store_name") || process.env.FILE_SEARCH_STORE_NAME || "";
   setSetting("file_search_store_name", store);
+  if (store !== previous) {
+    resetDriveFileCache();
+  }
   return Response.json({ status: "saved", store });
 }
