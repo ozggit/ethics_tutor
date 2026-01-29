@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export default function AdminClient() {
   const [analytics, setAnalytics] = useState(null);
   const [syncStatus, setSyncStatus] = useState("idle");
+  const [authUrl, setAuthUrl] = useState("");
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -22,11 +23,26 @@ export default function AdminClient() {
     try {
       const res = await fetch("/api/admin/sync", { method: "POST" });
       const data = await res.json();
+      if (data.status === "needs_oauth") {
+        setSyncStatus("needs_oauth");
+        setAuthUrl(data.authUrl || "");
+        return;
+      }
+      setAuthUrl("");
       setSyncStatus(data.status || "completed");
     } catch (error) {
       setSyncStatus("failed");
     } finally {
       loadAnalytics();
+    }
+  };
+
+  const connectDrive = async () => {
+    const res = await fetch("/api/admin/oauth/start");
+    const data = await res.json();
+    const nextUrl = data.authUrl || authUrl;
+    if (nextUrl) {
+      window.location.href = nextUrl;
     }
   };
 
@@ -36,10 +52,17 @@ export default function AdminClient() {
         <button onClick={runSync} disabled={syncStatus === "running"}>
           {syncStatus === "running" ? "מסנכרן..." : "הפעל סנכרון"}
         </button>
+        {syncStatus === "needs_oauth" && (
+          <button className="secondary" onClick={connectDrive}>
+            חיבור ל-Google Drive
+          </button>
+        )}
         <button className="secondary" onClick={loadAnalytics}>
           רענון נתונים
         </button>
-        {syncStatus !== "idle" && <span className="footer-note">סטטוס: {syncStatus}</span>}
+        {syncStatus !== "idle" && (
+          <span className="footer-note">סטטוס: {syncStatus}</span>
+        )}
       </div>
 
       {analytics && (
