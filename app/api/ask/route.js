@@ -37,17 +37,9 @@ function createStream(answer, meta) {
 function isGreetingOnly(question) {
   const trimmed = question.trim();
   if (!trimmed) return false;
-  const greetings = [
-    "שלום",
-    "היי",
-    "הי",
-    "בוקר טוב",
-    "ערב טוב",
-    "מה נשמע",
-    "hello",
-    "hi"
-  ];
-  return greetings.some((item) => trimmed.toLowerCase() === item.toLowerCase());
+  return /^(hi|hello|hey|shalom|שלום|היי|הי|מה\s+שלומך|מה\s+נשמע|בוקר\s+טוב|ערב\s+טוב)\s*[.!?]*$/i.test(
+    trimmed
+  );
 }
 
 function isSourceRequest(question) {
@@ -66,6 +58,8 @@ export async function POST(request) {
   const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
   const question = (body.question || "").trim();
+  const week = body.week ? String(body.week).trim() : "";
+  const docType = body.type ? String(body.type).trim() : "";
 
   if (!question) {
     return NextResponse.json({ error: "Question is required" }, { status: 400 });
@@ -75,6 +69,7 @@ export async function POST(request) {
   touchSession(sessionId);
 
   const recentTurns = getRecentTurns(sessionId, 12);
+  const isFirstTurn = recentTurns.length === 0;
   const lastUserTurn = [...recentTurns].reverse().find((turn) => turn.role === "user");
   const lastRefs = getLastReferences(sessionId);
 
@@ -86,7 +81,11 @@ export async function POST(request) {
 
   if (isGreetingOnly(question)) {
     finalAnswer =
-      "נעים להכיר! אפשר לשאול כל שאלה על חומרי הקורס. למשל: מה ההבדל בין אתיקה מקצועית לאחריות משפטית?";
+      "שלום! אני כאן לעזור בשאלות על חומרי הקורס באתיקה.\n" +
+      "אפשר לשאול למשל:\n" +
+      "- מה ההבדל בין תועלתנות לגישה של קאנט?\n" +
+      "- תן/י דוגמה לדילמה אתית בניהול משאבי אנוש\n" +
+      "- מה העקרונות המרכזיים של אחריות מקצועית?";
     groundingStatus = "not_applicable";
   } else if (isSourceRequest(question)) {
     if (lastRefs) {
@@ -107,11 +106,24 @@ export async function POST(request) {
       groundingStatus = "not_found";
     }
   } else {
-    const rewritten = shouldRewrite(question) && lastUserTurn
-      ? `בהקשר לשאלה הקודמת "${lastUserTurn.text}": ${question}`
-      : question;
+    let preparedQuestion = question;
+    if (docType) {
+      preparedQuestion = `בהקשר של ${docType}, ${preparedQuestion}`;
+    }
+    if (week) {
+      preparedQuestion = `בהקשר לשבוע ${week}, ${preparedQuestion}`;
+    }
 
-    const prompt = buildPrompt(rewritten, recentTurns, lastRefs?.question);
+    const rewritten = shouldRewrite(preparedQuestion) && lastUserTurn
+      ? `בהקשר לשאלה הקודמת "${lastUserTurn.text}": ${preparedQuestion}`
+      : preparedQuestion;
+
+    const prompt = buildPrompt({
+      question: rewritten,
+      recentTurns,
+      lastGroundedQuestion: lastRefs?.question,
+      isFirstTurn
+    });
     const geminiResponse = await generateAnswer(prompt);
     const parsed = parseGeminiResponse(geminiResponse);
     finalAnswer = parsed.answer;
