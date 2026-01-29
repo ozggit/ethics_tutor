@@ -7,7 +7,13 @@ import {
   setLastReferences,
   touchSession
 } from "../../../lib/db";
-import { buildPrompt, generateAnswer, parseGeminiResponse } from "../../../lib/gemini";
+import {
+  buildGreetingPrompt,
+  buildPrompt,
+  generateAnswer,
+  generateGreeting,
+  parseGeminiResponse
+} from "../../../lib/gemini";
 import { getOrCreateSessionId } from "../../../lib/session";
 
 export const runtime = "nodejs";
@@ -80,12 +86,18 @@ export async function POST(request) {
   addTurn(sessionId, "user", question);
 
   if (isGreetingOnly(question)) {
-    finalAnswer =
-      "שלום! אני כאן לעזור בשאלות על חומרי הקורס באתיקה.\n" +
-      "אפשר לשאול למשל:\n" +
-      "- מה ההבדל בין תועלתנות לגישה של קאנט?\n" +
-      "- תן/י דוגמה לדילמה אתית בניהול משאבי אנוש\n" +
-      "- מה העקרונות המרכזיים של אחריות מקצועית?";
+    try {
+      const promptPayload = buildGreetingPrompt(question);
+      const response = await generateGreeting(promptPayload);
+      finalAnswer = parseGeminiResponse(response).answer;
+    } catch (error) {
+      finalAnswer =
+        "שלום! אני כאן לעזור בשאלות על חומרי הקורס באתיקה.\n" +
+        "אפשר לשאול למשל:\n" +
+        "- מה ההבדל בין תועלתנות לגישה של קאנט?\n" +
+        "- תן/י דוגמה לדילמה אתית בניהול משאבי אנוש\n" +
+        "- מה העקרונות המרכזיים של אחריות מקצועית?";
+    }
     groundingStatus = "not_applicable";
   } else if (isSourceRequest(question)) {
     if (lastRefs) {
