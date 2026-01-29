@@ -7,6 +7,8 @@ export default function AdminClient() {
   const [syncStatus, setSyncStatus] = useState("idle");
   const [authUrl, setAuthUrl] = useState("");
   const [syncErrors, setSyncErrors] = useState([]);
+  const [modelValue, setModelValue] = useState("");
+  const [modelStatus, setModelStatus] = useState("idle");
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -15,8 +17,16 @@ export default function AdminClient() {
     setAnalytics(data);
   };
 
+  const loadModel = async () => {
+    const res = await fetch("/api/admin/model", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setModelValue(data.model || "");
+  };
+
   useEffect(() => {
     loadAnalytics();
+    loadModel();
   }, []);
 
   const runSync = async () => {
@@ -38,6 +48,25 @@ export default function AdminClient() {
       setSyncErrors([]);
     } finally {
       loadAnalytics();
+    }
+  };
+
+  const saveModel = async () => {
+    if (!modelValue.trim()) return;
+    setModelStatus("saving");
+    try {
+      const res = await fetch("/api/admin/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelValue })
+      });
+      if (res.ok) {
+        setModelStatus("saved");
+      } else {
+        setModelStatus("failed");
+      }
+    } catch (error) {
+      setModelStatus("failed");
     }
   };
 
@@ -67,6 +96,28 @@ export default function AdminClient() {
         {syncStatus !== "idle" && (
           <span className="footer-note">סטטוס: {syncStatus}</span>
         )}
+      </div>
+
+      <div className="panel">
+        <h3>מודל Gemini פעיל</h3>
+        <div className="actions">
+          <input
+            className="model-input"
+            value={modelValue}
+            onChange={(event) => setModelValue(event.target.value)}
+            placeholder="models/gemini-3-pro-preview"
+          />
+          <button onClick={saveModel} disabled={modelStatus === "saving"}>
+            {modelStatus === "saving" ? "שומר..." : "שמירה"}
+          </button>
+          {modelStatus === "saved" && <span className="footer-note">עודכן</span>}
+          {modelStatus === "failed" && (
+            <span className="footer-note">נכשל לעדכן</span>
+          )}
+        </div>
+        <div className="footer-note">
+          אפשר להדביק שם מודל מלא, למשל: models/gemini-3-flash-preview
+        </div>
       </div>
 
       {analytics && (

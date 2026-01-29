@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const initialMessages = [
-  {
-    role: "assistant",
-    text: "שלום! אני כאן כדי לענות רק מתוך חומרי הקורס. איך אפשר לעזור?",
-    groundingStatus: "not_applicable",
-    citations: []
-  }
-];
+const initialMessages = [];
 
 function splitSseEvents(buffer) {
   const events = buffer.split("\n\n");
@@ -149,7 +142,9 @@ export default function ChatClient() {
             <div className={`message ${message.role}`}>
               {message.text || "..."}
             </div>
-            {message.role === "assistant" && message.groundingStatus && (
+            {message.role === "assistant" &&
+              message.groundingStatus &&
+              message.groundingStatus !== "not_applicable" && (
               <div className="meta">
                 <span className={`badge ${message.groundingStatus === "grounded" ? "" : "warn"}`}>
                   {message.groundingStatus === "grounded" && "מבוסס על חומרי הקורס"}
