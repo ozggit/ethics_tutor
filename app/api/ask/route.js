@@ -66,6 +66,12 @@ function isSyllabusQuery(question) {
   );
 }
 
+function detectWeekLabel(question) {
+  const match = String(question).match(/(?:week|wk|w|שבוע|הרצאה)\s*0*(\d{1,2})/i);
+  if (!match) return "";
+  return String(match[1]).padStart(2, "0");
+}
+
 export async function POST(request) {
   const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
@@ -132,7 +138,10 @@ export async function POST(request) {
       preparedQuestion = `בהקשר לשבוע ${week}, ${preparedQuestion}`;
     }
 
-    if (isSyllabusQuery(preparedQuestion)) {
+    const detectedWeek = detectWeekLabel(preparedQuestion);
+
+    const syllabusQuery = isSyllabusQuery(preparedQuestion);
+    if (syllabusQuery) {
       preparedQuestion = `סילבוס הקורס: ${preparedQuestion}`;
     }
 
@@ -146,7 +155,18 @@ export async function POST(request) {
       lastGroundedQuestion: lastRefs?.question,
       isFirstTurn
     });
-    const geminiResponse = await generateAnswer(promptPayload);
+    const metadataFilter = syllabusQuery
+      ? 'type="syllabus"'
+      : detectedWeek
+        ? `week="${detectedWeek}"`
+        : "";
+    const geminiResponse = await generateAnswer({
+      ...promptPayload,
+      fileSearchConfig: {
+        metadataFilter,
+        topK: syllabusQuery || detectedWeek ? 10 : 8
+      }
+    });
     const parsed = parseGeminiResponse(geminiResponse);
     finalAnswer = parsed.answer;
     citations = parsed.references.map((ref) => {
