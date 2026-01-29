@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const initialMessages = [];
+const suggestions = [
+  "מהי אתיקה תועלתנית?",
+  "הסבר את הדילמה המוסרית",
+  "מהם עקרונות קאנט?",
+  "מהי אחריות מקצועית בניהול משאבי אנוש?"
+];
 
 function splitSseEvents(buffer) {
   const events = buffer.split("\n\n");
@@ -44,12 +50,14 @@ export default function ChatClient() {
   const sendMessage = async (question) => {
     if (!question.trim() || loading) return;
     setLoading(true);
-    const userMessage = { role: "user", text: question };
+    const now = Date.now();
+    const userMessage = { role: "user", text: question, createdAt: now };
     const assistantMessage = {
       role: "assistant",
       text: "",
       groundingStatus: "pending",
-      citations: []
+      citations: [],
+      createdAt: now
     };
     setMessages((prev) => {
       const next = [...prev, userMessage, assistantMessage];
@@ -135,44 +143,102 @@ export default function ChatClient() {
   };
 
   return (
-    <div className="input-row">
-      <div className="chat-window" ref={chatRef}>
-        {messages.map((message, index) => (
-          <div key={`${message.role}-${index}`}>
-            <div className={`message ${message.role}`}>
-              {message.text || "..."}
+    <>
+      <div className="chat-messages" ref={chatRef}>
+        {messages.length === 0 && (
+          <div className="welcome-card">
+            <div className="welcome-icon">
+              <span className="welcome-icon-letter">AI</span>
             </div>
-            {message.role === "assistant" &&
-              message.groundingStatus &&
-              message.groundingStatus !== "not_applicable" && (
-              <div className="meta">
-                <span className={`badge ${message.groundingStatus === "grounded" ? "" : "warn"}`}>
-                  {message.groundingStatus === "grounded" && "מבוסס על חומרי הקורס"}
-                  {message.groundingStatus === "not_found" && "אין התאמה בחומר"}
-                  {message.groundingStatus === "not_applicable" && "לא רלוונטי למקורות"}
-                  {message.groundingStatus === "pending" && "מחפש מקורות"}
-                </span>
-                {message.citations && message.citations.length > 0 && (
-                  <span className="badge">
-                    {message.citations.join(" · ")}
-                  </span>
-                )}
-              </div>
-            )}
+            <h2>שלום! אני מורה האתיקה שלך</h2>
+            <p>
+              אני כאן לעזור לך ללמוד את חומרי הקורס "מבוא לאתיקה". אני עונה על שאלות
+              <strong> רק על בסיס חומרי הקורס</strong> — ההרצאות והמאמרים.
+            </p>
+            <div className="suggestion-chips">
+              {suggestions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="suggestion-chip"
+                  onClick={() => sendMessage(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((message, index) => (
+          <div
+            key={`${message.role}-${index}`}
+            className={`message ${message.role === "user" ? "message-user" : "message-assistant"}`}
+          >
+            <div className="message-bubble">
+              {message.role === "assistant" && !message.text ? (
+                <div className="typing-indicator">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                </div>
+              ) : (
+                <span className="message-text">{message.text}</span>
+              )}
+
+              {message.role === "assistant" && message.citations?.length > 0 && (
+                <div className="citations">
+                  <div className="citations-title">מקורות מחומרי הקורס:</div>
+                  {message.citations.map((citation) => (
+                    <div className="citation-item" key={citation}>
+                      • {citation}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {message.role === "assistant" && message.groundingStatus === "not_found" && (
+                <div className="no-grounding-warning">
+                  התשובה לא נמצאה בחומרי הקורס
+                </div>
+              )}
+            </div>
+            <div className="message-meta">
+              {new Date(message.createdAt || Date.now()).toLocaleTimeString("he-IL", {
+                hour: "2-digit",
+                minute: "2-digit"
+              })}
+            </div>
           </div>
         ))}
       </div>
-      <form className="input-row" onSubmit={handleSubmit}>
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="שאלה מתוך החומר..."
-          dir="rtl"
-        />
-        <div className="actions">
-          <button type="submit" disabled={loading}>
-            {loading ? "מנסח תשובה..." : "שליחה"}
+
+      <form className="chat-input-area" onSubmit={handleSubmit}>
+        <div className="chat-input-wrapper">
+          <textarea
+            className="chat-input"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="שאל שאלה על חומרי הקורס..."
+            dir="rtl"
+            rows={1}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                handleSubmit(event);
+              }
+            }}
+          />
+          <button className="send-button" type="submit" disabled={loading}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M2 21l20-9L2 3v7l14 2-14 2v7z"
+                fill="currentColor"
+              />
+            </svg>
           </button>
+        </div>
+        <div className="actions">
           <button type="button" className="secondary" onClick={handleSources} disabled={loading}>
             בקש/י מקורות
           </button>
@@ -181,6 +247,6 @@ export default function ChatClient() {
           )}
         </div>
       </form>
-    </div>
+    </>
   );
 }

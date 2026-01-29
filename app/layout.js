@@ -1,16 +1,10 @@
 import "./globals.css";
-import { Heebo, Frank_Ruhl_Libre } from "next/font/google";
+import { Heebo } from "next/font/google";
 
 const bodyFont = Heebo({
   subsets: ["hebrew", "latin"],
   variable: "--font-body",
-  weight: ["300", "400", "500", "700"]
-});
-
-const displayFont = Frank_Ruhl_Libre({
-  subsets: ["hebrew", "latin"],
-  variable: "--font-display",
-  weight: ["400", "500", "700"]
+  weight: ["300", "400", "500", "600", "700", "800"]
 });
 
 export const metadata = {
@@ -20,7 +14,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="he" dir="rtl" className={`${bodyFont.variable} ${displayFont.variable}`}>
+    <html lang="he" dir="rtl" className={bodyFont.variable}>
       <body>{children}</body>
     </html>
   );
