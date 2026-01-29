@@ -11,6 +11,10 @@ export default function AdminClient() {
   const [modelStatus, setModelStatus] = useState("idle");
   const [storeValue, setStoreValue] = useState("");
   const [storeStatus, setStoreStatus] = useState("idle");
+  const [storeCreateName, setStoreCreateName] = useState("Ethics Course Store");
+  const [storeCreateStatus, setStoreCreateStatus] = useState("idle");
+  const [driveFolderValue, setDriveFolderValue] = useState("");
+  const [driveFolderStatus, setDriveFolderStatus] = useState("idle");
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -33,10 +37,18 @@ export default function AdminClient() {
     setStoreValue(data.store || "");
   };
 
+  const loadDriveFolder = async () => {
+    const res = await fetch("/api/admin/drive-folder", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setDriveFolderValue(data.folder || "");
+  };
+
   useEffect(() => {
     loadAnalytics();
     loadModel();
     loadStore();
+    loadDriveFolder();
   }, []);
 
   const runSync = async () => {
@@ -96,6 +108,46 @@ export default function AdminClient() {
       }
     } catch (error) {
       setStoreStatus("failed");
+    }
+  };
+
+  const createStore = async () => {
+    setStoreCreateStatus("saving");
+    try {
+      const res = await fetch("/api/admin/store/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: storeCreateName })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStoreValue(data.store || "");
+        setStoreStatus("saved");
+        setStoreCreateStatus("saved");
+      } else {
+        setStoreCreateStatus("failed");
+      }
+    } catch (error) {
+      setStoreCreateStatus("failed");
+    }
+  };
+
+  const saveDriveFolder = async () => {
+    if (!driveFolderValue.trim()) return;
+    setDriveFolderStatus("saving");
+    try {
+      const res = await fetch("/api/admin/drive-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: driveFolderValue })
+      });
+      if (res.ok) {
+        setDriveFolderStatus("saved");
+      } else {
+        setDriveFolderStatus("failed");
+      }
+    } catch (error) {
+      setDriveFolderStatus("failed");
     }
   };
 
@@ -168,6 +220,43 @@ export default function AdminClient() {
         </div>
         <div className="footer-note">
           הדבק/י כאן Store חדש כדי להתחיל מאפס ולסנכרן מחדש.
+        </div>
+        <div className="actions">
+          <input
+            className="model-input"
+            value={storeCreateName}
+            onChange={(event) => setStoreCreateName(event.target.value)}
+            placeholder="Ethics Course Store"
+          />
+          <button onClick={createStore} disabled={storeCreateStatus === "saving"}>
+            {storeCreateStatus === "saving" ? "יוצר..." : "יצירת Store חדש"}
+          </button>
+          {storeCreateStatus === "saved" && <span className="footer-note">נוצר</span>}
+          {storeCreateStatus === "failed" && (
+            <span className="footer-note">נכשל ליצור</span>
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <h3>Google Drive Folder</h3>
+        <div className="actions">
+          <input
+            className="model-input"
+            value={driveFolderValue}
+            onChange={(event) => setDriveFolderValue(event.target.value)}
+            placeholder="Drive Folder ID"
+          />
+          <button onClick={saveDriveFolder} disabled={driveFolderStatus === "saving"}>
+            {driveFolderStatus === "saving" ? "שומר..." : "שמירה"}
+          </button>
+          {driveFolderStatus === "saved" && <span className="footer-note">עודכן</span>}
+          {driveFolderStatus === "failed" && (
+            <span className="footer-note">נכשל לעדכן</span>
+          )}
+        </div>
+        <div className="footer-note">
+          הדבק/י כאן את מזהה התיקייה שממנה נסנכרן את חומרי הקורס.
         </div>
       </div>
 
