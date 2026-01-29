@@ -109,6 +109,86 @@ a {
   white-space: pre-wrap;
 }
 
+.message-bubble p {
+  margin: 0 0 0.75rem;
+}
+
+.message-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.message-bubble strong {
+  font-weight: 600;
+  color: var(--brand-blue-primary);
+}
+
+.message-bubble ul,
+.message-bubble ol {
+  margin: 0.5rem 0;
+  padding-right: 1.5rem;
+}
+
+.message-bubble li {
+  margin: 0.35rem 0;
+}
+
+.message-bubble h1,
+.message-bubble h2,
+.message-bubble h3,
+.message-bubble h4,
+.message-bubble h5,
+.message-bubble h6 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.message-bubble h1 {
+  font-size: 1.25rem;
+}
+
+.message-bubble h2 {
+  font-size: 1.15rem;
+}
+
+.message-bubble h3 {
+  font-size: 1.05rem;
+}
+
+.message-bubble code {
+  background: #f1f5f9;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: monospace;
+}
+
+.message-bubble pre {
+  background: #f1f5f9;
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.message-bubble pre code {
+  background: none;
+  padding: 0;
+}
+
+.message-bubble blockquote {
+  border-right: 3px solid var(--brand-blue-primary);
+  padding-right: 1rem;
+  margin: 0.5rem 0;
+  color: #64748b;
+}
+
+.message-bubble hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1rem 0;
+}
+
 .message-user .message-bubble {
   background: var(--brand-blue-primary);
   color: #fff;

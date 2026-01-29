@@ -139,7 +139,12 @@ export async function POST(request) {
     const geminiResponse = await generateAnswer(promptPayload);
     const parsed = parseGeminiResponse(geminiResponse);
     finalAnswer = parsed.answer;
-    citations = parsed.references.map((ref) => `${ref.week} — ${ref.part}`);
+    citations = parsed.references.map((ref) => {
+      const parts = [ref.week, ref.part].filter(Boolean);
+      if (parts.length) return parts.join(" — ");
+      if (ref.quote) return ref.quote;
+      return "מסמך הקורס";
+    });
     groundingStatus = citations.length ? "grounded" : "not_found";
 
     if (!citations.length) {

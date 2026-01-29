@@ -1,6 +1,9 @@
 "use client";
 
+import { marked } from "marked";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+marked.setOptions({ breaks: true });
 
 const initialMessages = [];
 const suggestions = [
@@ -183,7 +186,12 @@ export default function ChatClient() {
                   <span className="typing-dot" />
                 </div>
               ) : (
-                <span className="message-text">{message.text}</span>
+                <span
+                  className="message-text"
+                  {...(message.role === "assistant"
+                    ? { dangerouslySetInnerHTML: { __html: marked.parse(message.text || "") } }
+                    : { children: message.text })}
+                />
               )}
 
               {message.role === "assistant" && message.citations?.length > 0 && (
