@@ -60,6 +60,12 @@ function shouldRewrite(question) {
   return /(זה|זאת|הזה|הזאת|הם|הן|this|that|those)/i.test(question);
 }
 
+function isSyllabusQuery(question) {
+  return /(סילבוס|syllabus|מבנה הקורס|נושאי הקורס|דרישות הקורס|מטלות|ציון|הערכה|grading|requirements)/i.test(
+    question
+  );
+}
+
 export async function POST(request) {
   const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
@@ -124,6 +130,10 @@ export async function POST(request) {
     }
     if (week) {
       preparedQuestion = `בהקשר לשבוע ${week}, ${preparedQuestion}`;
+    }
+
+    if (isSyllabusQuery(preparedQuestion)) {
+      preparedQuestion = `סילבוס הקורס: ${preparedQuestion}`;
     }
 
     const rewritten = shouldRewrite(preparedQuestion) && lastUserTurn
