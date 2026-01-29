@@ -20,7 +20,9 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-RUN useradd -m -u 1001 -s /bin/bash nextjs
+RUN useradd -m -u 1001 -s /bin/bash nextjs \
+  && mkdir -p /app/data \
+  && chown -R nextjs:nextjs /app/data
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
