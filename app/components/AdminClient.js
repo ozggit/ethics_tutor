@@ -6,6 +6,7 @@ export default function AdminClient() {
   const [analytics, setAnalytics] = useState(null);
   const [syncStatus, setSyncStatus] = useState("idle");
   const [authUrl, setAuthUrl] = useState("");
+  const [syncErrors, setSyncErrors] = useState([]);
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -26,12 +27,15 @@ export default function AdminClient() {
       if (data.status === "needs_oauth") {
         setSyncStatus("needs_oauth");
         setAuthUrl(data.authUrl || "");
+        setSyncErrors([]);
         return;
       }
+      setSyncErrors(data.errors || []);
       setAuthUrl("");
       setSyncStatus(data.status || "completed");
     } catch (error) {
       setSyncStatus("failed");
+      setSyncErrors([]);
     } finally {
       loadAnalytics();
     }
@@ -105,6 +109,18 @@ export default function AdminClient() {
               ))}
             </div>
           </div>
+          {syncErrors.length > 0 && (
+            <div>
+              <h3>שגיאות סנכרון אחרונות</h3>
+              <div className="list">
+                {syncErrors.map((item) => (
+                  <div className="list-item" key={item.fileId}>
+                    {item.name} ({item.mimeType}) – {item.error}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
