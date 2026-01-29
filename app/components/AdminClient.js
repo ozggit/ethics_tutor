@@ -9,6 +9,8 @@ export default function AdminClient() {
   const [syncErrors, setSyncErrors] = useState([]);
   const [modelValue, setModelValue] = useState("");
   const [modelStatus, setModelStatus] = useState("idle");
+  const [storeValue, setStoreValue] = useState("");
+  const [storeStatus, setStoreStatus] = useState("idle");
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -24,9 +26,17 @@ export default function AdminClient() {
     setModelValue(data.model || "");
   };
 
+  const loadStore = async () => {
+    const res = await fetch("/api/admin/store", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setStoreValue(data.store || "");
+  };
+
   useEffect(() => {
     loadAnalytics();
     loadModel();
+    loadStore();
   }, []);
 
   const runSync = async () => {
@@ -67,6 +77,25 @@ export default function AdminClient() {
       }
     } catch (error) {
       setModelStatus("failed");
+    }
+  };
+
+  const saveStore = async () => {
+    if (!storeValue.trim()) return;
+    setStoreStatus("saving");
+    try {
+      const res = await fetch("/api/admin/store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: storeValue })
+      });
+      if (res.ok) {
+        setStoreStatus("saved");
+      } else {
+        setStoreStatus("failed");
+      }
+    } catch (error) {
+      setStoreStatus("failed");
     }
   };
 
@@ -117,6 +146,28 @@ export default function AdminClient() {
         </div>
         <div className="footer-note">
           אפשר להדביק שם מודל מלא, למשל: models/gemini-3-flash-preview
+        </div>
+      </div>
+
+      <div className="panel">
+        <h3>File Search Store פעיל</h3>
+        <div className="actions">
+          <input
+            className="model-input"
+            value={storeValue}
+            onChange={(event) => setStoreValue(event.target.value)}
+            placeholder="fileSearchStores/your-store-id"
+          />
+          <button onClick={saveStore} disabled={storeStatus === "saving"}>
+            {storeStatus === "saving" ? "שומר..." : "שמירה"}
+          </button>
+          {storeStatus === "saved" && <span className="footer-note">עודכן</span>}
+          {storeStatus === "failed" && (
+            <span className="footer-note">נכשל לעדכן</span>
+          )}
+        </div>
+        <div className="footer-note">
+          הדבק/י כאן Store חדש כדי להתחיל מאפס ולסנכרן מחדש.
         </div>
       </div>
 
