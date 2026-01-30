@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 export default function AdminClient() {
+  const driveSyncDisabled =
+    process.env.NEXT_PUBLIC_DISABLE_DRIVE_SYNC === "true" || process.env.NODE_ENV !== "production";
   const [analytics, setAnalytics] = useState(null);
   const [syncStatus, setSyncStatus] = useState("idle");
   const [authUrl, setAuthUrl] = useState("");
@@ -52,6 +54,10 @@ export default function AdminClient() {
   }, []);
 
   const runSync = async () => {
+    if (driveSyncDisabled) {
+      setSyncStatus("disabled_local");
+      return;
+    }
     setSyncStatus("running");
     try {
       const res = await fetch("/api/admin/sync", { method: "POST" });
@@ -163,10 +169,13 @@ export default function AdminClient() {
   return (
     <div className="input-row">
       <div className="actions">
-        <button onClick={runSync} disabled={syncStatus === "running"}>
+        <button
+          onClick={runSync}
+          disabled={syncStatus === "running" || driveSyncDisabled}
+        >
           {syncStatus === "running" ? "מסנכרן..." : "הפעל סנכרון"}
         </button>
-        {syncStatus === "needs_oauth" && (
+        {syncStatus === "needs_oauth" && !driveSyncDisabled && (
           <button className="secondary" onClick={connectDrive}>
             חיבור ל-Google Drive
           </button>
@@ -174,6 +183,9 @@ export default function AdminClient() {
         <button className="secondary" onClick={loadAnalytics}>
           רענון נתונים
         </button>
+        {driveSyncDisabled && (
+          <span className="footer-note">סנכרון Drive מושבת בסביבת פיתוח מקומית.</span>
+        )}
         {syncStatus !== "idle" && (
           <span className="footer-note">סטטוס: {syncStatus}</span>
         )}
@@ -267,7 +279,7 @@ export default function AdminClient() {
         <>
           <div className="admin-grid">
             <div className="stat">
-              <h3>סה"כ שאלות</h3>
+              <h3>סה&quot;כ שאלות</h3>
               <span>{analytics.totalQuestions}</span>
             </div>
             <div className="stat">

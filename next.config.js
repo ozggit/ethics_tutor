@@ -1,7 +1,17 @@
 const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
-  serverExternalPackages: ["better-sqlite3"]
+  experimental: {
+    serverComponentsExternalPackages: ["better-sqlite3"]
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "www.kinneret.ac.il"
+      }
+    ]
+  }
 };
 
 export default nextConfig;

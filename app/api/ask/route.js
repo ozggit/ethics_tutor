@@ -72,6 +72,35 @@ function detectWeekLabel(question) {
   return String(match[1]).padStart(2, "0");
 }
 
+function pickGroundingDecision(parsed) {
+  const refsCount = parsed?.references?.length || 0;
+  const stats = parsed?.grounding || {};
+  const supports = Number(stats.supportsCount || 0);
+  const coverage = Number(stats.coverage || 0);
+
+  if (!refsCount) {
+    return {
+      grounded: false,
+      reason: "no_references",
+      supportsCount: supports,
+      coverage
+    };
+  }
+
+  // Heuristic: allow low-support answers if we have multiple retrieved chunks,
+  // but prefer answers with direct grounding supports.
+  const chunksCount = Number(stats.chunksCount || 0);
+  const strong = supports >= 2 || coverage >= 0.22;
+  const ok = strong || chunksCount >= 3;
+
+  return {
+    grounded: ok,
+    reason: ok ? (strong ? "supported" : "weak_supported") : "weak_support",
+    supportsCount: supports,
+    coverage
+  };
+}
+
 export async function POST(request) {
   const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
@@ -160,14 +189,46 @@ export async function POST(request) {
       : detectedWeek
         ? `week="${detectedWeek}"`
         : "";
-    const geminiResponse = await generateAnswer({
-      ...promptPayload,
-      fileSearchConfig: {
-        metadataFilter,
-        topK: syllabusQuery || detectedWeek ? 10 : 8
+
+    const requestGemini = async ({ filter, topK }) =>
+      generateAnswer({
+        ...promptPayload,
+        fileSearchConfig: {
+          ...(filter ? { metadataFilter: filter } : {}),
+          topK
+        }
+      });
+
+    // Retrieval strategy:
+    // 1) Start broad (no filter) to avoid over-filtering.
+    // 2) If the user explicitly asks for syllabus/week OR grounding is weak, try filtered.
+    const unfilteredTopK = syllabusQuery || detectedWeek ? 14 : 10;
+    const filteredTopK = syllabusQuery || detectedWeek ? 10 : 8;
+
+    let geminiResponse = await requestGemini({ filter: "", topK: unfilteredTopK });
+    let parsed = parseGeminiResponse(geminiResponse);
+    let decision = pickGroundingDecision(parsed);
+
+    if (metadataFilter) {
+      const shouldTryFiltered = syllabusQuery || Boolean(detectedWeek) || !decision.grounded;
+      if (shouldTryFiltered) {
+        const filteredResponse = await requestGemini({ filter: metadataFilter, topK: filteredTopK });
+        const filteredParsed = parseGeminiResponse(filteredResponse);
+        const filteredDecision = pickGroundingDecision(filteredParsed);
+
+        const pickFiltered =
+          (filteredParsed.references?.length || 0) > (parsed.references?.length || 0) ||
+          (filteredDecision.supportsCount > decision.supportsCount) ||
+          (filteredDecision.coverage > decision.coverage + 0.05);
+
+        if (pickFiltered) {
+          geminiResponse = filteredResponse;
+          parsed = filteredParsed;
+          decision = filteredDecision;
+        }
       }
-    });
-    const parsed = parseGeminiResponse(geminiResponse);
+    }
+
     finalAnswer = parsed.answer;
     citations = parsed.references.map((ref) => {
       const parts = [ref.week, ref.part].filter(Boolean);
@@ -175,11 +236,12 @@ export async function POST(request) {
       if (ref.quote) return ref.quote;
       return "מסמך הקורס";
     });
-    groundingStatus = citations.length ? "grounded" : "not_found";
+    groundingStatus = decision.grounded ? "grounded" : "not_found";
 
-    if (!citations.length) {
+    if (!decision.grounded) {
       finalAnswer =
-        "לא מצאתי התאמה ברורה בחומרי הקורס לשאלה הזו. אפשר לחדד שבוע, נושא או שם פרק כדי שאוכל לבדוק שוב?";
+        "לא מצאתי התאמה ברורה בחומרי הקורס לשאלה הזו. " +
+        "אפשר לחדד שבוע/הרצאה, מונח מדויק, או לצטט משפט מהמצגת כדי שאוכל לאתר את זה?";
     } else {
       setLastReferences(sessionId, rewritten, parsed.answer, parsed.references);
     }
