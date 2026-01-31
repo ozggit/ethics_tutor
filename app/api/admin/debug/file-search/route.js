@@ -6,8 +6,18 @@ export const dynamic = "force-dynamic";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const FILE_SEARCH_STORE_NAME = process.env.FILE_SEARCH_STORE_NAME;
 
+function normalizeStoreName(name) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed) return "";
+  if (trimmed.startsWith("fileSearchStores/")) return trimmed;
+  if (trimmed.includes("/")) return trimmed;
+  return `fileSearchStores/${trimmed}`;
+}
+
 function getStoreName() {
-  return getSetting("file_search_store_name") || FILE_SEARCH_STORE_NAME || "";
+  return normalizeStoreName(
+    getSetting("file_search_store_name") || FILE_SEARCH_STORE_NAME || ""
+  );
 }
 
 function safePick(obj, keys) {
@@ -102,51 +112,82 @@ async function generateWithFileSearch({ model, storeName, question, topK, metada
     "ענה/י אך ורק לפי חומרי הקורס שמופיעים בכלי File Search. " +
     "אם אין התאמה ברורה בחומר, החזר/י בדיוק: NOT_FOUND";
 
-  const body = {
-    contents: [{ role: "user", parts: [{ text: question }] }],
-    systemInstruction: { parts: [{ text: systemInstruction }] },
-    tools: [
-      {
-        fileSearch: {
-          fileSearchStoreNames: [storeName],
-          topK,
-          ...(metadataFilter ? { metadataFilter } : {})
-        }
+  async function requestGenerateContent(variant) {
+    const tool =
+      variant === "snake"
+        ? {
+            file_search: {
+              file_search_store_names: [storeName],
+              top_k: topK,
+              ...(metadataFilter ? { metadata_filter: metadataFilter } : {})
+            }
+          }
+        : {
+            fileSearch: {
+              fileSearchStoreNames: [storeName],
+              topK,
+              ...(metadataFilter ? { metadataFilter } : {})
+            }
+          };
+
+    const body = {
+      contents: [{ role: "user", parts: [{ text: question }] }],
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      tools: [tool],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 240
       }
-    ],
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 240
-    }
-  };
-
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    return {
-      ok: false,
-      status: resp.status,
-      error: data?.error?.message || "Gemini request failed",
-      raw: data
     };
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return {
+        ok: false,
+        status: resp.status,
+        error: data?.error?.message || "Gemini request failed",
+        raw: data
+      };
+    }
+
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const text = parts.map((p) => p?.text || "").join("").trim();
+    return { ok: true, variant, text, raw: data };
   }
 
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts.map((p) => p?.text || "").join("").trim();
-  return { ok: true, text, raw: data };
+  // First try camelCase, then snake_case if grounding metadata is missing.
+  const primary = await requestGenerateContent("camel");
+  if (!primary.ok) return primary;
+  const md = primary?.raw?.candidates?.[0]?.groundingMetadata || {};
+  const hasGrounding =
+    (Array.isArray(md.groundingChunks) && md.groundingChunks.length > 0) ||
+    (Array.isArray(md.groundingSupports) && md.groundingSupports.length > 0);
+  if (hasGrounding) return primary;
+
+  const fallback = await requestGenerateContent("snake");
+  if (fallback.ok) {
+    fallback.fallbackUsed = true;
+  }
+  return fallback;
 }
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
 
   const storeOverride = typeof body.storeName === "string" ? body.storeName.trim() : "";
-  const storeName = storeOverride || getStoreName();
-  const model = (body.model || getSetting("gemini_model") || process.env.GEMINI_MODEL || "models/gemini-3-pro-preview").trim();
+  const storeName = normalizeStoreName(storeOverride) || getStoreName();
+  const model = (
+    body.model ||
+    getSetting("gemini_retrieval_model") ||
+    process.env.GEMINI_RETRIEVAL_MODEL ||
+    "models/gemini-2.5-flash"
+  ).trim();
   const question = String(body.question || "מה ההבדל בין תועלתנות לחובה מוסרית לפי קאנט?").trim();
   const topK = Number.isFinite(body.topK) ? Math.max(1, Math.min(50, body.topK)) : 12;
   const metadataFilter = typeof body.metadataFilter === "string" ? body.metadataFilter.trim() : "";
@@ -200,7 +241,12 @@ export async function POST(request) {
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const model = (url.searchParams.get("model") || getSetting("gemini_model") || process.env.GEMINI_MODEL || "models/gemini-3-pro-preview").trim();
+  const model = (
+    url.searchParams.get("model") ||
+    getSetting("gemini_retrieval_model") ||
+    process.env.GEMINI_RETRIEVAL_MODEL ||
+    "models/gemini-2.5-flash"
+  ).trim();
   const question = String(url.searchParams.get("q") || "מהי דילמה אתית בניהול משאבי אנוש?").trim();
   const topK = Number(url.searchParams.get("topK") || 12);
   const metadataFilter = String(url.searchParams.get("filter") || "").trim();

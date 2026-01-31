@@ -6,8 +6,18 @@ export const dynamic = "force-dynamic";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const FILE_SEARCH_STORE_NAME = process.env.FILE_SEARCH_STORE_NAME;
 
+function normalizeStoreName(name) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed) return "";
+  if (trimmed.startsWith("fileSearchStores/")) return trimmed;
+  if (trimmed.includes("/")) return trimmed;
+  return `fileSearchStores/${trimmed}`;
+}
+
 function getStoreName() {
-  return getSetting("file_search_store_name") || FILE_SEARCH_STORE_NAME || "";
+  return normalizeStoreName(
+    getSetting("file_search_store_name") || FILE_SEARCH_STORE_NAME || ""
+  );
 }
 
 async function listDocuments({ storeName, pageSize }) {
@@ -18,7 +28,7 @@ async function listDocuments({ storeName, pageSize }) {
     return { ok: false, error: "Missing FILE_SEARCH_STORE_NAME" };
   }
 
-  const storePath = storeName.includes("/") ? storeName : `fileSearchStores/${storeName}`;
+  const storePath = normalizeStoreName(storeName);
   const url = `https://generativelanguage.googleapis.com/v1beta/${storePath}/documents?pageSize=${pageSize}&key=${GEMINI_API_KEY}`;
   const resp = await fetch(url);
   const data = await resp.json().catch(() => ({}));
@@ -41,7 +51,7 @@ async function listDocumentsPage({ storeName, pageSize, pageToken }) {
     return { ok: false, error: "Missing FILE_SEARCH_STORE_NAME" };
   }
 
-  const storePath = storeName.includes("/") ? storeName : `fileSearchStores/${storeName}`;
+  const storePath = normalizeStoreName(storeName);
   const tokenParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
   const url = `https://generativelanguage.googleapis.com/v1beta/${storePath}/documents?pageSize=${pageSize}${tokenParam}&key=${GEMINI_API_KEY}`;
   const resp = await fetch(url);

@@ -73,29 +73,53 @@ function detectWeekLabel(question) {
 }
 
 function pickGroundingDecision(parsed) {
+  if (parsed?.notFound) {
+    return {
+      grounded: false,
+      weak: false,
+      reason: "model_not_found",
+      supportsCount: 0,
+      coverage: 0
+    };
+  }
+
   const refsCount = parsed?.references?.length || 0;
   const stats = parsed?.grounding || {};
   const supports = Number(stats.supportsCount || 0);
   const coverage = Number(stats.coverage || 0);
+  const chunksCount = Number(stats.chunksCount || 0);
 
-  if (!refsCount) {
+  // Docs: citations/grounding metadata may be absent even when File Search is used.
+  // We still need a safety gate:
+  // - Best: at least some groundingSupports coverage.
+  // - Acceptable: retrieved chunks exist (citations), even if supports are missing.
+  // - Otherwise: treat as ungrounded.
+  const strong = supports >= 1 && (coverage >= 0.08 || supports >= 2);
+  if (strong) {
     return {
-      grounded: false,
-      reason: "no_references",
+      grounded: true,
+      weak: false,
+      reason: "supported",
       supportsCount: supports,
       coverage
     };
   }
 
-  // Heuristic: allow low-support answers if we have multiple retrieved chunks,
-  // but prefer answers with direct grounding supports.
-  const chunksCount = Number(stats.chunksCount || 0);
-  const strong = supports >= 2 || coverage >= 0.22;
-  const ok = strong || chunksCount >= 3;
+  const hasRetrieval = refsCount > 0 || chunksCount > 0;
+  if (hasRetrieval) {
+    return {
+      grounded: true,
+      weak: true,
+      reason: "retrieved_without_supports",
+      supportsCount: supports,
+      coverage
+    };
+  }
 
   return {
-    grounded: ok,
-    reason: ok ? (strong ? "supported" : "weak_supported") : "weak_support",
+    grounded: false,
+    weak: false,
+    reason: "no_retrieval_evidence",
     supportsCount: supports,
     coverage
   };
@@ -229,22 +253,22 @@ export async function POST(request) {
       }
     }
 
-    finalAnswer = parsed.answer;
-    citations = parsed.references.map((ref) => {
-      const parts = [ref.week, ref.part].filter(Boolean);
-      if (parts.length) return parts.join(" — ");
-      if (ref.quote) return ref.quote;
-      return "מסמך הקורס";
-    });
-    groundingStatus = decision.grounded ? "grounded" : "not_found";
+     finalAnswer = parsed.answer;
+     citations = parsed.references.map((ref) => {
+       const parts = [ref.week, ref.part].filter(Boolean);
+       if (parts.length) return parts.join(" — ");
+       if (ref.quote) return ref.quote;
+       return "מסמך הקורס";
+     });
+     groundingStatus = decision.grounded ? (decision.weak ? "weak" : "grounded") : "not_found";
 
-    if (!decision.grounded) {
-      finalAnswer =
-        "לא מצאתי התאמה ברורה בחומרי הקורס לשאלה הזו. " +
-        "אפשר לחדד שבוע/הרצאה, מונח מדויק, או לצטט משפט מהמצגת כדי שאוכל לאתר את זה?";
-    } else {
-      setLastReferences(sessionId, rewritten, parsed.answer, parsed.references);
-    }
+     if (!decision.grounded) {
+       finalAnswer =
+         "לא מצאתי התאמה ברורה בחומרי הקורס לשאלה הזו. " +
+         "אפשר לחדד שבוע/הרצאה, מונח מדויק, או לצטט משפט מהמצגת כדי שאוכל לאתר את זה?";
+     } else {
+       setLastReferences(sessionId, rewritten, parsed.answer, parsed.references);
+     }
   }
 
   addTurn(sessionId, "assistant", finalAnswer);

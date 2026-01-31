@@ -210,6 +210,12 @@ export default function ChatClient() {
                   התשובה לא נמצאה בחומרי הקורס
                 </div>
               )}
+
+              {message.role === "assistant" && message.groundingStatus === "weak" && (
+                <div className="no-grounding-warning">
+                  תשובה עם מקור חלש — מומלץ לבקש מקורות או לחדד שבוע/מושג
+                </div>
+              )}
             </div>
             <div className="message-meta">
               {new Date(message.createdAt || Date.now()).toLocaleTimeString("he-IL", {
