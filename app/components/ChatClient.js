@@ -38,7 +38,18 @@ export default function ChatClient() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const chatRef = useRef(null);
-  const pendingIndex = useRef(null);
+  const pendingAssistantId = useRef(null);
+
+  const newMessageId = () => {
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+    } catch {
+      // ignore
+    }
+    return `m_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  };
 
   useEffect(() => {
     if (!chatRef.current) return;
@@ -54,17 +65,19 @@ export default function ChatClient() {
     if (!question.trim() || loading) return;
     setLoading(true);
     const now = Date.now();
-    const userMessage = { role: "user", text: question, createdAt: now };
+    const userMessage = { id: newMessageId(), role: "user", text: question, createdAt: now };
     const assistantMessage = {
+      id: newMessageId(),
       role: "assistant",
       text: "",
       groundingStatus: "pending",
       citations: [],
+      done: false,
       createdAt: now
     };
     setMessages((prev) => {
       const next = [...prev, userMessage, assistantMessage];
-      pendingIndex.current = next.length - 1;
+      pendingAssistantId.current = assistantMessage.id;
       return next;
     });
 
@@ -96,8 +109,12 @@ export default function ChatClient() {
           if (data.type === "chunk") {
             setMessages((prev) => {
               const next = [...prev];
-              const index = pendingIndex.current ?? next.length - 1;
+              const indexFromId = pendingAssistantId.current
+                ? next.findIndex((m) => m.id === pendingAssistantId.current)
+                : -1;
+              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
               const current = next[index];
+              if (!current || current.role !== "assistant") return next;
               next[index] = { ...current, text: `${current.text}${data.value}` };
               return next;
             });
@@ -105,13 +122,32 @@ export default function ChatClient() {
           if (data.type === "meta") {
             setMessages((prev) => {
               const next = [...prev];
-              const index = pendingIndex.current ?? next.length - 1;
+              const indexFromId = pendingAssistantId.current
+                ? next.findIndex((m) => m.id === pendingAssistantId.current)
+                : -1;
+              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
               const current = next[index];
+              if (!current || current.role !== "assistant") return next;
               next[index] = {
                 ...current,
                 groundingStatus: data.groundingStatus,
-                citations: data.citations || []
+                citations: data.citations || [],
+                done: true
               };
+              return next;
+            });
+          }
+          if (data.type === "done") {
+            setMessages((prev) => {
+              const next = [...prev];
+              const indexFromId = pendingAssistantId.current
+                ? next.findIndex((m) => m.id === pendingAssistantId.current)
+                : -1;
+              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
+              const current = next[index];
+              if (!current || current.role !== "assistant") return next;
+              if (current.done) return next;
+              next[index] = { ...current, done: true };
               return next;
             });
           }
@@ -120,15 +156,20 @@ export default function ChatClient() {
     } catch (error) {
       setMessages((prev) => {
         const next = [...prev];
-        const index = pendingIndex.current ?? next.length - 1;
+        const indexFromId = pendingAssistantId.current
+          ? next.findIndex((m) => m.id === pendingAssistantId.current)
+          : -1;
+        const index = indexFromId >= 0 ? indexFromId : next.length - 1;
         next[index] = {
           ...next[index],
           text: "משהו השתבש בשליחת הבקשה. נסו שוב בעוד רגע.",
-          groundingStatus: "not_applicable"
+          groundingStatus: "not_applicable",
+          done: true
         };
         return next;
       });
     } finally {
+      pendingAssistantId.current = null;
       setLoading(false);
     }
   };
@@ -139,10 +180,6 @@ export default function ChatClient() {
     if (!question) return;
     setInput("");
     sendMessage(question);
-  };
-
-  const handleSources = () => {
-    sendMessage("אפשר לקבל את המקורות? תודה.");
   };
 
   return (
@@ -175,7 +212,7 @@ export default function ChatClient() {
 
         {messages.map((message, index) => (
           <div
-            key={`${message.role}-${index}`}
+            key={message.id ? `${message.id}` : `${message.role}-${index}`}
             className={`message ${message.role === "user" ? "message-user" : "message-assistant"}`}
           >
             <div className="message-bubble">
@@ -186,24 +223,29 @@ export default function ChatClient() {
                   <span className="typing-dot" />
                 </div>
               ) : (
-                <span
-                  className="message-text"
-                  {...(message.role === "assistant"
-                    ? { dangerouslySetInnerHTML: { __html: marked.parse(message.text || "") } }
-                    : { children: message.text })}
-                />
+                <>
+                  {message.role === "assistant" ? (
+                    message.done ? (
+                      <div
+                        className="message-text"
+                        dangerouslySetInnerHTML={{ __html: marked.parse(message.text || "") }}
+                      />
+                    ) : (
+                      <div className="message-text message-text--streaming">{message.text}</div>
+                    )
+                  ) : (
+                    <div className="message-text">{message.text}</div>
+                  )}
+                </>
               )}
 
-              {message.role === "assistant" && message.citations?.length > 0 && (
-                <div className="citations">
-                  <div className="citations-title">מקורות מחומרי הקורס:</div>
-                  {message.citations.map((citation) => (
-                    <div className="citation-item" key={citation}>
-                      • {citation}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {message.role === "assistant" &&
+                (message.groundingStatus === "grounded" || message.groundingStatus === "weak") && (
+                  <div className="grounding-pill">
+                    מבוסס על חומרי הקורס
+                    {message.groundingStatus === "weak" ? " (חלש)" : ""}
+                  </div>
+                )}
 
               {message.role === "assistant" && message.groundingStatus === "not_found" && (
                 <div className="no-grounding-warning">
@@ -213,7 +255,7 @@ export default function ChatClient() {
 
               {message.role === "assistant" && message.groundingStatus === "weak" && (
                 <div className="no-grounding-warning">
-                  תשובה עם מקור חלש — מומלץ לבקש מקורות או לחדד שבוע/מושג
+                  תשובה עם מקור חלש — מומלץ לחדד שבוע/מושג או לשאול ממוקד יותר
                 </div>
               )}
             </div>
@@ -253,9 +295,6 @@ export default function ChatClient() {
           </button>
         </div>
         <div className="actions">
-          <button type="button" className="secondary" onClick={handleSources} disabled={loading}>
-            בקש/י מקורות
-          </button>
           {lastAssistant?.groundingStatus === "not_found" && (
             <span className="footer-note">אפשר לחדד שבוע, מושג או שם של פרק.</span>
           )}

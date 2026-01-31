@@ -38,7 +38,15 @@ function summarizeGrounding(response) {
     .map((chunk) => {
       const ctx = chunk?.retrievedContext || {};
       const label =
-        safePick(ctx, ["displayName", "title", "documentTitle", "fileName", "name", "uri"]) ||
+        safePick(ctx, [
+          "displayName",
+          "title",
+          "documentTitle",
+          "fileName",
+          "name",
+          "uri",
+          "fileSearchStore"
+        ]) ||
         "(unknown)";
       return { label };
     })

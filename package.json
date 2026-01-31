@@ -12,7 +12,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node --test",
-    "test:watch": "node --test --watch"
+    "test:watch": "node --test --watch",
+    "test:ui": "npx playwright test",
+    "test:ui:local": "node scripts/run-playwright-local.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.0",
@@ -23,6 +25,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.42.1",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.35"
   }

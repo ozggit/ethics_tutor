@@ -1,0 +1,31 @@
+services:
+  web-prod:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ./data:/app/data
+
+  tester:
+    build:
+      context: .
+      target: tester
+    depends_on:
+      - web-prod
+    environment:
+      E2E_LIVE: "1"
+      PLAYWRIGHT_BASE_URL: "http://web-prod:3000"
+    volumes:
+      - ./playwright-artifacts:/app/playwright-artifacts
+    command: >
+      sh -lc '
+        mkdir -p playwright-artifacts &&
+        node -e "const http=require(\"http\");const url=process.env.PLAYWRIGHT_BASE_URL||\"http://web-prod:3000\";let i=0;const ping=()=>{http.get(url,r=>process.exit(0)).on(\"error\",()=>{if(i++>120){console.error(\"server not ready\");process.exit(1);}setTimeout(ping,500);});};ping();" &&
+        npx playwright test tests/ui/live-pipeline.spec.js --reporter=list
+      '
