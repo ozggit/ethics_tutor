@@ -14,6 +14,11 @@ import {
   generateGreeting,
   parseGeminiResponse
 } from "../../../lib/gemini";
+import {
+  extractStandaloneTerm,
+  getUserTurnsForPrompt,
+  shouldUseFollowupContext
+} from "../../../lib/chatContext";
 import { getOrCreateSessionId } from "../../../lib/session";
 
 export const runtime = "nodejs";
@@ -60,10 +65,6 @@ function isSourceRequest(question) {
 
 function isGroundingCheck(question) {
   return /(מבוסס|grounded|מקורות|מבוססת)/i.test(question) && /(האם|is)/i.test(question);
-}
-
-function shouldRewrite(question) {
-  return /(זה|זאת|הזה|הזאת|הם|הן|this|that|those)/i.test(question);
 }
 
 function isSyllabusQuery(question) {
@@ -174,6 +175,39 @@ function computeDuplicatePrefixCount(text) {
   return count;
 }
 
+function tokenizeForMatch(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function computeTermCoverage(term, text) {
+  const termTokens = [...new Set(tokenizeForMatch(term))];
+  if (!termTokens.length) return 0;
+  const textSet = new Set(tokenizeForMatch(text));
+  let covered = 0;
+  for (const token of termTokens) {
+    if (textSet.has(token)) covered += 1;
+  }
+  return covered / termTokens.length;
+}
+
+function applyStandaloneTermGuard(standaloneTerm, parsed, decision) {
+  if (!standaloneTerm || !decision?.grounded) return decision;
+  const coverage = computeTermCoverage(standaloneTerm, parsed?.answer || "");
+  if (coverage >= 0.8) return decision;
+  return {
+    grounded: false,
+    weak: false,
+    reason: "term_mismatch",
+    supportsCount: Number(decision.supportsCount || 0),
+    coverage: Number(decision.coverage || 0)
+  };
+}
+
 function normalizeCitation(item) {
   if (!item) return null;
   if (typeof item === "string") {
@@ -223,6 +257,7 @@ export async function POST(request) {
   const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
   const question = (body.question || "").trim();
+  const standaloneTerm = extractStandaloneTerm(question);
   const week = body.week ? String(body.week).trim() : "";
   const docType = body.type ? String(body.type).trim() : "";
   const debug = body.debug === true;
@@ -242,7 +277,8 @@ export async function POST(request) {
 
   const recentTurns = getRecentTurns(sessionId, 12);
   const isFirstTurn = recentTurns.length === 0;
-  const lastUserTurn = [...recentTurns].reverse().find((turn) => turn.role === "user");
+  const recentUserTurns = getUserTurnsForPrompt(recentTurns, 6);
+  const lastUserTurn = recentUserTurns[recentUserTurns.length - 1] || null;
   const lastRefs = getLastReferences(sessionId);
 
   let finalAnswer = "";
@@ -306,14 +342,16 @@ export async function POST(request) {
       preparedQuestion = `סילבוס הקורס: ${preparedQuestion}`;
     }
 
-    const rewritten = shouldRewrite(preparedQuestion) && lastUserTurn
+    const useFollowupContext = shouldUseFollowupContext(preparedQuestion, lastUserTurn?.text || "");
+    const rewritten = useFollowupContext && lastUserTurn
       ? `בהקשר לשאלה הקודמת "${lastUserTurn.text}": ${preparedQuestion}`
       : preparedQuestion;
+    const promptRecentTurns = useFollowupContext ? recentUserTurns : [];
 
     const promptPayload = buildPrompt({
       question: rewritten,
-      recentTurns,
-      lastGroundedQuestion: lastRefs?.question,
+      recentTurns: promptRecentTurns,
+      lastGroundedQuestion: useFollowupContext ? lastRefs?.question : "",
       isFirstTurn
     });
     const metadataFilter = syllabusQuery
@@ -357,7 +395,7 @@ export async function POST(request) {
       diag.calls += 1;
       geminiResponse = await requestGemini({ filter: "", topK: unfilteredTopK });
       parsed = parseGeminiResponse(geminiResponse);
-      decision = pickGroundingDecision(parsed);
+      decision = applyStandaloneTermGuard(standaloneTerm, parsed, pickGroundingDecision(parsed));
 
       diag.candidates.unfiltered = {
         finishReason: parsed.finishReason || "",
@@ -382,7 +420,11 @@ export async function POST(request) {
             topK: filteredTopK
           });
           const filteredParsed = parseGeminiResponse(filteredResponse);
-          const filteredDecision = pickGroundingDecision(filteredParsed);
+          const filteredDecision = applyStandaloneTermGuard(
+            standaloneTerm,
+            filteredParsed,
+            pickGroundingDecision(filteredParsed)
+          );
 
           diag.candidates.filtered = {
             finishReason: filteredParsed.finishReason || "",
@@ -418,7 +460,11 @@ export async function POST(request) {
         diag.calls += 1;
         const rescueResponse = await requestGemini({ filter: "", topK: rescueTopK });
         const rescueParsed = parseGeminiResponse(rescueResponse);
-        const rescueDecision = pickGroundingDecision(rescueParsed);
+        const rescueDecision = applyStandaloneTermGuard(
+          standaloneTerm,
+          rescueParsed,
+          pickGroundingDecision(rescueParsed)
+        );
 
         diag.candidates.rescue = {
           finishReason: rescueParsed.finishReason || "",

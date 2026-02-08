@@ -25,7 +25,8 @@ function parseSseData(eventChunk) {
     .find((item) => item.startsWith("data: "));
   if (!line) return null;
   const payload = line.replace("data: ", "").trim();
-  if (!payload || payload === "[DONE]") return { type: "done" };
+  if (!payload) return null;
+  if (payload === "[DONE]") return { type: "done" };
   try {
     return JSON.parse(payload);
   } catch (error) {
@@ -95,63 +96,78 @@ export default function ChatClient() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const applySseData = (data) => {
+        if (!data) return;
+        if (data.type === "chunk") {
+          setMessages((prev) => {
+            const next = [...prev];
+            const indexFromId = pendingAssistantId.current
+              ? next.findIndex((m) => m.id === pendingAssistantId.current)
+              : -1;
+            const index = indexFromId >= 0 ? indexFromId : next.length - 1;
+            const current = next[index];
+            if (!current || current.role !== "assistant") return next;
+            next[index] = { ...current, text: `${current.text}${data.value}` };
+            return next;
+          });
+        }
+        if (data.type === "meta") {
+          setMessages((prev) => {
+            const next = [...prev];
+            const indexFromId = pendingAssistantId.current
+              ? next.findIndex((m) => m.id === pendingAssistantId.current)
+              : -1;
+            const index = indexFromId >= 0 ? indexFromId : next.length - 1;
+            const current = next[index];
+            if (!current || current.role !== "assistant") return next;
+            next[index] = {
+              ...current,
+              groundingStatus: data.groundingStatus,
+              citations: data.citations || [],
+              done: true
+            };
+            return next;
+          });
+        }
+        if (data.type === "done") {
+          setMessages((prev) => {
+            const next = [...prev];
+            const indexFromId = pendingAssistantId.current
+              ? next.findIndex((m) => m.id === pendingAssistantId.current)
+              : -1;
+            const index = indexFromId >= 0 ? indexFromId : next.length - 1;
+            const current = next[index];
+            if (!current || current.role !== "assistant") return next;
+            if (current.done) return next;
+            next[index] = { ...current, done: true };
+            return next;
+          });
+        }
+      };
+      const processBuffer = (flush = false) => {
+        const { events, remainder } = splitSseEvents(buffer);
+        buffer = remainder || "";
+        events.forEach((eventChunk) => {
+          const data = parseSseData(eventChunk);
+          applySseData(data);
+        });
+
+        if (flush && buffer.trim()) {
+          const data = parseSseData(buffer);
+          applySseData(data);
+          buffer = "";
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          buffer += decoder.decode();
+          processBuffer(true);
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = splitSseEvents(buffer);
-        buffer = remainder;
-
-        events.forEach((eventChunk) => {
-          const data = parseSseData(eventChunk);
-          if (!data) return;
-          if (data.type === "chunk") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const indexFromId = pendingAssistantId.current
-                ? next.findIndex((m) => m.id === pendingAssistantId.current)
-                : -1;
-              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
-              const current = next[index];
-              if (!current || current.role !== "assistant") return next;
-              next[index] = { ...current, text: `${current.text}${data.value}` };
-              return next;
-            });
-          }
-          if (data.type === "meta") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const indexFromId = pendingAssistantId.current
-                ? next.findIndex((m) => m.id === pendingAssistantId.current)
-                : -1;
-              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
-              const current = next[index];
-              if (!current || current.role !== "assistant") return next;
-              next[index] = {
-                ...current,
-                groundingStatus: data.groundingStatus,
-                citations: data.citations || [],
-                done: true
-              };
-              return next;
-            });
-          }
-          if (data.type === "done") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const indexFromId = pendingAssistantId.current
-                ? next.findIndex((m) => m.id === pendingAssistantId.current)
-                : -1;
-              const index = indexFromId >= 0 ? indexFromId : next.length - 1;
-              const current = next[index];
-              if (!current || current.role !== "assistant") return next;
-              if (current.done) return next;
-              next[index] = { ...current, done: true };
-              return next;
-            });
-          }
-        });
+        processBuffer(false);
       }
     } catch (error) {
       setMessages((prev) => {

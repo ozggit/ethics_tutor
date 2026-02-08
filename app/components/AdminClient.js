@@ -1,22 +1,29 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 
 export default function AdminClient() {
   const driveSyncDisabled =
     process.env.NEXT_PUBLIC_DISABLE_DRIVE_SYNC === "true" || process.env.NODE_ENV !== "production";
+
   const [analytics, setAnalytics] = useState(null);
   const [syncStatus, setSyncStatus] = useState("idle");
   const [authUrl, setAuthUrl] = useState("");
   const [syncErrors, setSyncErrors] = useState([]);
+
   const [modelValue, setModelValue] = useState("");
   const [modelStatus, setModelStatus] = useState("idle");
+
   const [storeValue, setStoreValue] = useState("");
   const [storeStatus, setStoreStatus] = useState("idle");
   const [storeCreateName, setStoreCreateName] = useState("Ethics Course Store");
   const [storeCreateStatus, setStoreCreateStatus] = useState("idle");
+
   const [driveFolderValue, setDriveFolderValue] = useState("");
   const [driveFolderStatus, setDriveFolderStatus] = useState("idle");
+
+  const [analyticsResetStatus, setAnalyticsResetStatus] = useState("idle");
+  const [analyticsResetCount, setAnalyticsResetCount] = useState(0);
 
   const loadAnalytics = async () => {
     const res = await fetch("/api/admin/analytics", { cache: "no-store" });
@@ -58,16 +65,19 @@ export default function AdminClient() {
       setSyncStatus("disabled_local");
       return;
     }
+
     setSyncStatus("running");
     try {
       const res = await fetch("/api/admin/sync", { method: "POST" });
       const data = await res.json();
+
       if (data.status === "needs_oauth") {
         setSyncStatus("needs_oauth");
         setAuthUrl(data.authUrl || "");
         setSyncErrors([]);
         return;
       }
+
       setSyncErrors(data.errors || []);
       setAuthUrl("");
       setSyncStatus(data.status || "completed");
@@ -76,6 +86,15 @@ export default function AdminClient() {
       setSyncErrors([]);
     } finally {
       loadAnalytics();
+    }
+  };
+
+  const connectDrive = async () => {
+    const res = await fetch("/api/admin/oauth/start");
+    const data = await res.json();
+    const nextUrl = data.authUrl || authUrl;
+    if (nextUrl) {
+      window.location.href = nextUrl;
     }
   };
 
@@ -88,11 +107,7 @@ export default function AdminClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: modelValue })
       });
-      if (res.ok) {
-        setModelStatus("saved");
-      } else {
-        setModelStatus("failed");
-      }
+      setModelStatus(res.ok ? "saved" : "failed");
     } catch (error) {
       setModelStatus("failed");
     }
@@ -107,11 +122,7 @@ export default function AdminClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ store: storeValue })
       });
-      if (res.ok) {
-        setStoreStatus("saved");
-      } else {
-        setStoreStatus("failed");
-      }
+      setStoreStatus(res.ok ? "saved" : "failed");
     } catch (error) {
       setStoreStatus("failed");
     }
@@ -126,13 +137,13 @@ export default function AdminClient() {
         body: JSON.stringify({ displayName: storeCreateName })
       });
       const data = await res.json();
-      if (res.ok) {
-        setStoreValue(data.store || "");
-        setStoreStatus("saved");
-        setStoreCreateStatus("saved");
-      } else {
+      if (!res.ok) {
         setStoreCreateStatus("failed");
+        return;
       }
+      setStoreValue(data.store || "");
+      setStoreStatus("saved");
+      setStoreCreateStatus("saved");
     } catch (error) {
       setStoreCreateStatus("failed");
     }
@@ -147,52 +158,72 @@ export default function AdminClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folder: driveFolderValue })
       });
-      if (res.ok) {
-        setDriveFolderStatus("saved");
-      } else {
-        setDriveFolderStatus("failed");
-      }
+      setDriveFolderStatus(res.ok ? "saved" : "failed");
     } catch (error) {
       setDriveFolderStatus("failed");
     }
   };
 
-  const connectDrive = async () => {
-    const res = await fetch("/api/admin/oauth/start");
-    const data = await res.json();
-    const nextUrl = data.authUrl || authUrl;
-    if (nextUrl) {
-      window.location.href = nextUrl;
+  const resetAnalytics = async () => {
+    const confirmed = window.confirm(
+      "Reset all analytics data? This permanently deletes aggregated history."
+    );
+    if (!confirmed) return;
+
+    setAnalyticsResetStatus("running");
+    setAnalyticsResetCount(0);
+
+    try {
+      const res = await fetch("/api/admin/analytics/reset", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAnalyticsResetStatus("failed");
+        return;
+      }
+      setAnalyticsResetStatus("saved");
+      setAnalyticsResetCount(Number(data.deletedCount || 0));
+      await loadAnalytics();
+    } catch (error) {
+      setAnalyticsResetStatus("failed");
     }
   };
 
   return (
     <div className="input-row">
       <div className="actions">
-        <button
-          onClick={runSync}
-          disabled={syncStatus === "running" || driveSyncDisabled}
-        >
-          {syncStatus === "running" ? "מסנכרן..." : "הפעל סנכרון"}
+        <button onClick={runSync} disabled={syncStatus === "running" || driveSyncDisabled}>
+          {syncStatus === "running" ? "Syncing..." : "Run sync"}
         </button>
         {syncStatus === "needs_oauth" && !driveSyncDisabled && (
           <button className="secondary" onClick={connectDrive}>
-            חיבור ל-Google Drive
+            Connect Google Drive
           </button>
         )}
         <button className="secondary" onClick={loadAnalytics}>
-          רענון נתונים
+          Refresh analytics
         </button>
+        <button
+          className="secondary secondary-danger"
+          onClick={resetAnalytics}
+          disabled={analyticsResetStatus === "running"}
+        >
+          {analyticsResetStatus === "running" ? "Resetting analytics..." : "Reset analytics"}
+        </button>
+
         {driveSyncDisabled && (
-          <span className="footer-note">סנכרון Drive מושבת בסביבת פיתוח מקומית.</span>
+          <span className="footer-note">Drive sync is disabled in local development mode.</span>
         )}
-        {syncStatus !== "idle" && (
-          <span className="footer-note">סטטוס: {syncStatus}</span>
+        {syncStatus !== "idle" && <span className="footer-note">Sync status: {syncStatus}</span>}
+        {analyticsResetStatus === "saved" && (
+          <span className="footer-note">Analytics reset complete ({analyticsResetCount} rows).</span>
+        )}
+        {analyticsResetStatus === "failed" && (
+          <span className="footer-note">Failed to reset analytics.</span>
         )}
       </div>
 
       <div className="panel">
-        <h3>מודל Gemini פעיל</h3>
+        <h3>Gemini model</h3>
         <div className="actions">
           <input
             className="model-input"
@@ -201,20 +232,18 @@ export default function AdminClient() {
             placeholder="models/gemini-3-pro-preview"
           />
           <button onClick={saveModel} disabled={modelStatus === "saving"}>
-            {modelStatus === "saving" ? "שומר..." : "שמירה"}
+            {modelStatus === "saving" ? "Saving..." : "Save"}
           </button>
-          {modelStatus === "saved" && <span className="footer-note">עודכן</span>}
-          {modelStatus === "failed" && (
-            <span className="footer-note">נכשל לעדכן</span>
-          )}
+          {modelStatus === "saved" && <span className="footer-note">Saved</span>}
+          {modelStatus === "failed" && <span className="footer-note">Failed to save</span>}
         </div>
         <div className="footer-note">
-          אפשר להדביק שם מודל מלא, למשל: models/gemini-3-flash-preview
+          Enter a full model name, for example: models/gemini-3-flash-preview
         </div>
       </div>
 
       <div className="panel">
-        <h3>File Search Store פעיל</h3>
+        <h3>File Search Store</h3>
         <div className="actions">
           <input
             className="model-input"
@@ -223,18 +252,13 @@ export default function AdminClient() {
             placeholder="fileSearchStores/your-store-id"
           />
           <button onClick={saveStore} disabled={storeStatus === "saving"}>
-            {storeStatus === "saving" ? "שומר..." : "שמירה"}
+            {storeStatus === "saving" ? "Saving..." : "Save"}
           </button>
-          {storeStatus === "saved" && <span className="footer-note">עודכן</span>}
-          {storeStatus === "failed" && (
-            <span className="footer-note">נכשל לעדכן</span>
-          )}
+          {storeStatus === "saved" && <span className="footer-note">Saved</span>}
+          {storeStatus === "failed" && <span className="footer-note">Failed to save</span>}
         </div>
         <div className="footer-note">
-          הדבק/י כאן Store חדש כדי להתחיל מאפס ולסנכרן מחדש.
-        </div>
-        <div className="footer-note">
-          שינוי ה-Store מנקה את מטמון הסנכרון ויגרום להעלאה מחדש של כל הקבצים.
+          Changing the store clears Drive sync cache and causes a full file re-upload on next sync.
         </div>
         <div className="actions">
           <input
@@ -244,17 +268,15 @@ export default function AdminClient() {
             placeholder="Ethics Course Store"
           />
           <button onClick={createStore} disabled={storeCreateStatus === "saving"}>
-            {storeCreateStatus === "saving" ? "יוצר..." : "יצירת Store חדש"}
+            {storeCreateStatus === "saving" ? "Creating..." : "Create new store"}
           </button>
-          {storeCreateStatus === "saved" && <span className="footer-note">נוצר</span>}
-          {storeCreateStatus === "failed" && (
-            <span className="footer-note">נכשל ליצור</span>
-          )}
+          {storeCreateStatus === "saved" && <span className="footer-note">Created</span>}
+          {storeCreateStatus === "failed" && <span className="footer-note">Failed to create</span>}
         </div>
       </div>
 
       <div className="panel">
-        <h3>Google Drive Folder</h3>
+        <h3>Google Drive folder</h3>
         <div className="actions">
           <input
             className="model-input"
@@ -263,65 +285,122 @@ export default function AdminClient() {
             placeholder="Drive Folder ID"
           />
           <button onClick={saveDriveFolder} disabled={driveFolderStatus === "saving"}>
-            {driveFolderStatus === "saving" ? "שומר..." : "שמירה"}
+            {driveFolderStatus === "saving" ? "Saving..." : "Save"}
           </button>
-          {driveFolderStatus === "saved" && <span className="footer-note">עודכן</span>}
-          {driveFolderStatus === "failed" && (
-            <span className="footer-note">נכשל לעדכן</span>
-          )}
+          {driveFolderStatus === "saved" && <span className="footer-note">Saved</span>}
+          {driveFolderStatus === "failed" && <span className="footer-note">Failed to save</span>}
         </div>
-        <div className="footer-note">
-          הדבק/י כאן את מזהה התיקייה שממנה נסנכרן את חומרי הקורס.
-        </div>
+        <div className="footer-note">Set the Drive folder ID used for course material sync.</div>
       </div>
 
       {analytics && (
         <>
           <div className="admin-grid">
             <div className="stat">
-              <h3>סה&quot;כ שאלות</h3>
+              <h3>Total questions</h3>
               <span>{analytics.totalQuestions}</span>
             </div>
             <div className="stat">
-              <h3>שיעור תשובות מבוססות</h3>
+              <h3>Anonymous sessions</h3>
+              <span>{analytics.anonymousUsers || 0}</span>
+              <div className="stat-footnote">Approx. unique browser sessions</div>
+            </div>
+            <div className="stat">
+              <h3>Grounded answer rate</h3>
               <span>{analytics.groundedRate}%</span>
             </div>
             <div className="stat">
-              <h3>ציטוטים ממוצעים</h3>
-              <span>{analytics.avgCitations}</span>
-            </div>
-            <div className="stat">
-              <h3>זמן מענה ממוצע</h3>
+              <h3>Average response time</h3>
               <span>{analytics.avgLatencyMs}ms</span>
             </div>
           </div>
+
+          <div className="analytics-help">
+            <h3>How to read this</h3>
+            <div className="footer-note">
+              Anonymous sessions are salted-hash session IDs, not names, emails, or student IDs.
+            </div>
+            <div className="footer-note">
+              One student using multiple browsers/devices can count as more than one session.
+            </div>
+            <div className="footer-note">
+              Multiple students sharing one browser can count as one session.
+            </div>
+          </div>
+
           <div>
-            <h3>7 הימים האחרונים</h3>
+            <h3>Last 7 days</h3>
             <div className="list">
-              {analytics.last7Days.map((item) => (
+              {(analytics.last7Days || []).map((item) => (
                 <div className="list-item" key={item.date}>
                   {item.date}: {item.count}
                 </div>
               ))}
             </div>
           </div>
+
           <div>
-            <h3>שאלות חוזרות</h3>
+            <h3>Top questions</h3>
             <div className="list">
-              {analytics.topQueries.map((item) => (
+              {(analytics.topQueries || []).map((item) => (
                 <div className="list-item" key={item.question}>
-                  {item.question} ({item.count})
+                  <div className="list-item-title">{item.question}</div>
+                  <div className="list-item-meta">
+                    {item.topic} | {item.count} questions | {item.uniqueUsers} anonymous sessions
+                  </div>
                 </div>
               ))}
+              {(!analytics.topQueries || analytics.topQueries.length === 0) && (
+                <div className="list-item">No data yet.</div>
+              )}
             </div>
           </div>
+
+          <div>
+            <h3>Hard topics</h3>
+            <div className="list">
+              {(analytics.hardTopics || []).map((item) => (
+                <div className="list-item" key={item.topic}>
+                  <div className="list-item-title">{item.topic}</div>
+                  <div className="list-item-meta">
+                    {item.totalQuestions} questions | {item.uniqueUsers} anonymous sessions |{" "}
+                    {item.repeatBySameUser} same-session repeats
+                  </div>
+                  {item.sampleQuestion && (
+                    <div className="list-item-note">Sample question: {item.sampleQuestion}</div>
+                  )}
+                </div>
+              ))}
+              {(!analytics.hardTopics || analytics.hardTopics.length === 0) && (
+                <div className="list-item">Not enough data yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3>Same-session repeated questions</h3>
+            <div className="list">
+              {(analytics.repeatPatterns || []).map((item) => (
+                <div className="list-item" key={item.question}>
+                  <div className="list-item-title">{item.question}</div>
+                  <div className="list-item-meta">
+                    {item.repeatBySameUser} repeated asks | {item.repeatUsers} sessions repeated
+                  </div>
+                </div>
+              ))}
+              {(!analytics.repeatPatterns || analytics.repeatPatterns.length === 0) && (
+                <div className="list-item">No repeated patterns yet.</div>
+              )}
+            </div>
+          </div>
+
           {syncErrors.length > 0 && (
             <div>
-              <h3>שגיאות סנכרון אחרונות</h3>
+              <h3>Recent sync errors</h3>
               <div className="list">
                 {syncErrors.map((item) => (
                   <div className="list-item" key={item.fileId}>
-                    {item.name} ({item.mimeType}) – {item.error}
+                    {item.name} ({item.mimeType}) - {item.error}
                   </div>
                 ))}
               </div>

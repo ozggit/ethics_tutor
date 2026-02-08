@@ -492,6 +492,11 @@ button.secondary {
   cursor: pointer;
 }
 
+button.secondary.secondary-danger {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.35);
+}
+
 .footer-note {
   color: #64748b;
   font-size: 0.85rem;
@@ -533,6 +538,20 @@ main {
   font-weight: 600;
 }
 
+.stat-footnote {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.analytics-help {
+  margin: 14px 0 4px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -544,6 +563,23 @@ main {
   border-radius: 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
+}
+
+.list-item-title {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.list-item-meta {
+  color: #475569;
+  font-size: 0.88rem;
+}
+
+.list-item-note {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 0.85rem;
 }
 
 input.model-input {
